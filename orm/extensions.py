@@ -1,7 +1,7 @@
 from sqlalchemy.orm.exc import DetachedInstanceError
 
 
-class ReprMixin:
+class Extension:
     def _repr(self, **fields) -> str:
         field_strings = []
         at_least_one_attached_attribute = False
@@ -15,3 +15,12 @@ class ReprMixin:
         if at_least_one_attached_attribute:
             return f"<{self.__class__.__name__}({','.join(field_strings)})>"
         return f"<{self.__class__.__name__} {id(self)}>"
+
+    def assign(self, value, Class):
+        # TODO разобраться
+        class_def = Class.__class__
+        attr = class_def.__name__.lower()
+        if isinstance(value, int):
+            eval(f'self.{attr}_id = value')
+        elif isinstance(value, class_def or None):
+            eval(f'self.{attr} = value')

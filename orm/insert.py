@@ -1,33 +1,77 @@
 import sqlalchemy as sa
+from sqlalchemy import event, DDL
 from datetime import datetime, time
 from random import randint
 
 from config import Base, engine, Session
 from orm.tables import *
 
+triggers = DDL("""
+CREATE OR REPLACE FUNCTION log()
+RETURNS trigger AS $body$
+BEGIN
+   IF (TG_OP = 'INSERT' OR TG_OP = 'UPDATE') THEN
+       INSERT INTO logs (change_date, operation_type, table_name)
+       VALUES(CURRENT_TIMESTAMP, TG_OP, TG_TABLE_NAME);
+       RETURN NEW;
+   ELSIF (TG_OP = 'DELETE') THEN
+       INSERT INTO logs (change_date, operation_type, table_name)
+       VALUES(CURRENT_TIMESTAMP, 'DELETE', TG_TABLE_NAME);
+       RETURN OLD;
+   END IF;
+END;
+$body$ LANGUAGE plpgsql;
+
+CREATE TRIGGER orders_log
+    AFTER INSERT OR UPDATE OR DELETE ON orders
+    FOR EACH ROW EXECUTE FUNCTION log();
+
+CREATE TRIGGER clients_log
+    AFTER INSERT OR UPDATE OR DELETE ON clients
+    FOR EACH ROW EXECUTE FUNCTION log();
+
+CREATE TRIGGER products_log
+    AFTER INSERT OR UPDATE OR DELETE ON products
+    FOR EACH ROW EXECUTE FUNCTION log();
+
+CREATE TRIGGER shops_log
+    AFTER INSERT OR UPDATE OR DELETE ON shops
+    FOR EACH ROW EXECUTE FUNCTION log();
+
+CREATE TRIGGER couriers_log
+    AFTER INSERT OR UPDATE OR DELETE ON couriers
+    FOR EACH ROW EXECUTE FUNCTION log();
+
+CREATE TRIGGER districts_log
+    AFTER INSERT OR UPDATE OR DELETE ON districts
+    FOR EACH ROW EXECUTE FUNCTION log();""").execute_if(dialect='postgresql')
+event.listen(Base.metadata, 'after_create', triggers)
+
 Base.metadata.drop_all(engine)
 Base.metadata.create_all(engine)
 
-districts = list(map(District,
-                     ['Академический', 'Алексеевский', 'Алтуфьевский', 'Арбат', 'Аэропорт',
-                      'Бабушкинский', 'Басманный', 'Беговой', 'Бескудниковский', 'Бибирево',
-                      'Бирюлёво Восточное']))
+districts = list(map(District, [
+    'Академический', 'Алексеевский', 'Алтуфьевский', 'Арбат', 'Аэропорт',
+    'Бабушкинский', 'Басманный', 'Беговой', 'Бескудниковский', 'Бибирево',
+    'Бирюлёво Восточное']))
 
-shops = list(map(Shop, ['Рога и Копыта', 'Эльдорадо', 'У Петровича']))
+shops = list(map(Shop, [
+    'Рога и Копыта', 'Эльдорадо', 'У Петровича']))
 
-statuses = list(map(Status,
-                ['Создан', 'Оплачен', 'Собран', 'Передан в доставку', 'Доставлен']))
+statuses = list(map(Status, [
+    'Создан', 'Оплачен', 'Собран', 'Передан в доставку', 'Доставлен']))
 
-couriers = [('Pauly', 'Higgen', '4075096814'),
-            ('Dre', 'Finnes', '9994922979'),
-            ('Denis', 'Portis', '5715044617'),
-            ('Georges', 'Iannetti', '1184784718'),
-            ('Annemarie', 'Topham', '7585643810'),
-            ('Berkie', 'Benka', '5753291204'),
-            ('Baily', 'Doole', '6347544174'),
-            ('Cleavland', 'Cronshaw', '5403015835'),
-            ('Rowe', 'Schultze', '5612134981'),
-            ('Neda', 'Shefton', '8087398014')]
+couriers = [
+    ('Pauly', 'Higgen', '4075096814'),
+    ('Dre', 'Finnes', '9994922979'),
+    ('Denis', 'Portis', '5715044617'),
+    ('Georges', 'Iannetti', '1184784718'),
+    ('Annemarie', 'Topham', '7585643810'),
+    ('Berkie', 'Benka', '5753291204'),
+    ('Baily', 'Doole', '6347544174'),
+    ('Cleavland', 'Cronshaw', '5403015835'),
+    ('Rowe', 'Schultze', '5612134981'),
+    ('Neda', 'Shefton', '8087398014')]
 couriers = [Courier(*courier) for courier in couriers]
 
 products = [
@@ -74,6 +118,7 @@ with Session() as session:
     session.add_all(statuses)
     session.add_all(districts)
     session.add_all(shops)
+    session.add_all(couriers)
 
     for d, t in zip(districts[:3], [time(1, 15), time(2, 25), time(3, 0)]):
         shops[0].add_district(d, t)
@@ -100,8 +145,9 @@ with Session() as session:
     session.add_all(clients)
     orders = []
     for client in clients:
+        shop = shops[randint(0, 2)]
         orders.append(
-            Order(client, shops[randint(0, 2)], shop.couriers[randint(0, len(shop.couriers) - 1)]))
+            Order(client, shop, shop.couriers[randint(0, len(shop.couriers) - 1)]))
 
     for order in orders:
         for i in range(randint(0, 5)):
@@ -109,17 +155,3 @@ with Session() as session:
 
     session.commit()
 
-    # print(session.query(Shop).all())
-    # print(session.query(District).all())
-    # print(session.query(Courier).all())
-    #
-    # print("\nРайоны доставки по магазинам:")
-    # for shop in shops:
-    #     print(f'{shop.shop_name}: \n{shop.district_names}')
-    #     print()
-    #     print(session.query(Courier.first_name, Courier.last_name, Courier.phone_number).\
-    #           filter(Courier.shop_id == shop.shop_id).all())
-    #     print()
-    #     print(session.query(Product.product_name, Product.price, Product.quantity).\
-    #           filter(Product.shop_id == shop.shop_id).all())
-    #     print()

@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import Union
 
 import sqlalchemy as sa
 from sqlalchemy.ext.associationproxy import association_proxy
@@ -7,10 +8,10 @@ from sqlalchemy.orm.collections import attribute_mapped_collection
 from datetime import datetime, time
 
 from config import Base
-from orm.extensions import ReprMixin
+from orm.extensions import Extension
 
 
-class Shop(Base, ReprMixin):
+class Shop(Base, Extension):
     __tablename__  = 'shops'
     __table_args__ = {'comment': 'Магазины'}
 
@@ -18,7 +19,7 @@ class Shop(Base, ReprMixin):
     shop_name = sa.Column(sa.String(50), nullable=False)
 
     # relations
-    districts: list['ShopDistrict'] = \
+    shop_districts: list['ShopDistrict'] = \
         sa.orm.relationship('ShopDistrict', back_populates='shop', cascade='all, delete')
     orders: list['Order'] = \
         sa.orm.relationship('Order', back_populates='shop', cascade='all, delete')
@@ -28,8 +29,10 @@ class Shop(Base, ReprMixin):
         sa.orm.relationship('Product', back_populates='shop', cascade='all, delete')
 
     # proxies
+    districts: list['District'] = \
+        association_proxy(target_collection='shop_districts', attr='district')
     district_names: list[str] = \
-        association_proxy(target_collection='districts', attr='district_name')
+        association_proxy(target_collection='shop_districts', attr='district_name')
 
     def __init__(self, name: str):
         self.shop_name = name
@@ -52,7 +55,7 @@ class Shop(Base, ReprMixin):
         product.shop = self
 
 
-class District(Base, ReprMixin):
+class District(Base, Extension):
     __tablename__  = 'districts'
     __table_args__ = {'comment': 'Районы доставки'}
 
@@ -60,12 +63,14 @@ class District(Base, ReprMixin):
     district_name = sa.Column(sa.String(30), nullable=False, unique=True)
 
     # relations
-    shops: list['ShopDistrict'] = \
+    shop_district: list['ShopDistrict'] = \
         sa.orm.relationship('ShopDistrict', back_populates='district', cascade='all, delete')
 
     # proxies
+    shops: list[Shop] = \
+        association_proxy(target_collection='shop_district', attr='shop')
     shop_names: list[str] = \
-        association_proxy(target_collection='shops', attr='shop_name')
+        association_proxy(target_collection='shop_district', attr='shop_name')
 
     def __init__(self, name: str):
         self.district_name = name
@@ -75,7 +80,7 @@ class District(Base, ReprMixin):
                           district_name=self.district_name)
 
 
-class ShopDistrict(Base, ReprMixin):
+class ShopDistrict(Base, Extension):
     __tablename__  = 'shops_districts'
     __table_args__ = {'comment': 'Вспомогательная таблица для связи '
                                  'магазинов и районов доставки'}
@@ -99,9 +104,17 @@ class ShopDistrict(Base, ReprMixin):
     district_name: str = \
         association_proxy(target_collection='district', attr='district_name')
 
-    def __init__(self, shop: Shop = None, district: District = None, delivery_time: time = None):
-        self.shop = shop
-        self.district = district
+    def __init__(self, shop: Union[Shop, int] = None, district: Union[District, int] = None, delivery_time: time = None):
+        self.assign(shop, Shop)
+        # if isinstance(shop, int):
+        #     self.shop_id = shop
+        # elif isinstance(district, District or None):
+        #     self.shop = shop
+        self.assign(district, District)
+        # if isinstance(district, int):
+        #     self.district_id = district
+        # elif isinstance(district, District or None):
+        #     self.district = district
         self.delivery_time = delivery_time
 
     def __repr__(self):
@@ -110,7 +123,7 @@ class ShopDistrict(Base, ReprMixin):
                           delivery_time=self.delivery_time)
 
 
-class Courier(Base, ReprMixin):
+class Courier(Base, Extension):
     __tablename__  = 'couriers'
     __table_args__ = {'comment': 'Курьеры'}
 
@@ -143,7 +156,7 @@ class Courier(Base, ReprMixin):
         self.shop = shop
 
 
-class Client(Base, ReprMixin):
+class Client(Base, Extension):
     __tablename__  = 'clients'
     __table_args__ = {'comment': 'Покупатели'}
 
@@ -165,15 +178,19 @@ class Client(Base, ReprMixin):
                           first_name=self.first_name,
                           last_name=self.last_name,
                           phone_number=self.phone_number,
-                          district_id=self.district_id,
+                          district=self.district,
                           address=self.address)
 
-    def __init__(self, first_name: str, last_name: str, phone: str, address: str, district: District = None):
+    def __init__(self, first_name: str, last_name: str, phone: str, address: str,
+                 district: Union[int, District] = None):
         self.first_name = first_name
         self.last_name = last_name
         self.phone_number = phone
-        self.district = district
         self.address = address
+        if isinstance(district, int):
+            self.district_id = district
+        elif isinstance(district, District or None):
+            self.district = district
 
     def set_district(self, district: District):
         self.district = district
@@ -184,7 +201,7 @@ class Client(Base, ReprMixin):
         order.purchase_date = date
 
 
-class Status(Base, ReprMixin):
+class Status(Base, Extension):
     __tablename__  = 'statuses'
     __table_args__ = {'comment': 'Статусы заказов'}
 
@@ -199,7 +216,7 @@ class Status(Base, ReprMixin):
         self.status = status
 
 
-class Product(Base, ReprMixin):
+class Product(Base, Extension):
     __tablename__  = 'products'
     __table_args__ = {'comment': 'Товары'}
 
@@ -210,7 +227,7 @@ class Product(Base, ReprMixin):
     quantity     = sa.Column(sa.Integer)
 
     # relations
-    orders: list['Order'] = \
+    orders: list['OrderProducts'] = \
         sa.orm.relationship('OrderProducts', back_populates='product', cascade='all, delete')
     shop: Shop = \
         sa.orm.relationship('Shop', back_populates='products')
@@ -229,7 +246,7 @@ class Product(Base, ReprMixin):
         self.shop = shop
 
 
-class Order(Base, ReprMixin):
+class Order(Base, Extension):
     __tablename__  = 'orders'
     __table_args__ = {'comment': 'Заказы'}
 
@@ -249,7 +266,7 @@ class Order(Base, ReprMixin):
         sa.orm.relationship('Courier', back_populates='orders')
     status: Status = \
         sa.orm.relationship('Status')
-    products: list[Product] \
+    products: list['OrderProducts'] \
         = sa.orm.relationship('OrderProducts', back_populates='order', cascade='all, delete')
 
     # proxies
@@ -265,7 +282,7 @@ class Order(Base, ReprMixin):
                           courier_id=self.courier_id)
 
     def __init__(self, client: Client = None, shop: Shop = None,
-                 date: datetime = datetime.now(), courier: Courier = None):
+                 courier: Courier = None, date: datetime = datetime.now()):
         self.client = client
         self.shop = shop
         self.purchase_date = date
@@ -281,7 +298,7 @@ class Order(Base, ReprMixin):
         product.quantity -= quantity
 
     def remove_product(self, product: Product):
-        order_product = product.orders.sort(key=lambda obj: obj.product_id == product.product_id, reverse=True)[0]
+        order_product = sorted(product.orders, key=lambda obj: obj.product_id == product.product_id, reverse=True)[0]
         product.quantity += order_product.quantity
         self.products.remove(order_product)
         del order_product
@@ -305,7 +322,7 @@ class Order(Base, ReprMixin):
         return s
 
 
-class OrderProducts(Base, ReprMixin):
+class OrderProducts(Base, Extension):
     __tablename__  = 'order_products'
     __table_args__ = {'comment': 'Вспомогательная таблица для связи '
                                  'заказа и товаров в этом заказе'}
@@ -335,3 +352,19 @@ class OrderProducts(Base, ReprMixin):
         self.order = order
         self.product = product
         self.quantity = quantity
+
+
+class Log(Base, Extension):
+    __tablename__  = 'logs'
+    __table_args__ = {'comment': 'Журнал логгирования'}
+
+    log_id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
+    change_date = sa.Column(sa.DateTime, nullable=False)
+    operation_type = sa.Column(sa.String(10), nullable=False)
+    table_name = sa.Column(sa.String(20), nullable=False)
+
+    def __repr__(self):
+        return self._repr(id=self.log_id,
+                          change_date=self.change_date,
+                          operation_type=self.operation_type,
+                          table_name=self.table_name)
