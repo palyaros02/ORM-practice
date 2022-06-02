@@ -1,37 +1,106 @@
+from __future__ import annotations
+from decimal import Decimal
+
 import sqlalchemy as sa
-from sqlalchemy.orm import declarative_base
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm.collections import attribute_mapped_collection
 
 from datetime import datetime, time
 
+from config import Base
 from orm.extensions import ReprMixin
 
-Base = declarative_base()
+
+class Shop(Base, ReprMixin):
+    __tablename__  = 'shops'
+    __table_args__ = {'comment': 'Магазины'}
+
+    shop_id   = sa.Column(sa.Integer,    primary_key=True, autoincrement=True)
+    shop_name = sa.Column(sa.String(50), nullable=False)
+
+    # relations
+    districts: list[ShopDistrict] = \
+        sa.orm.relationship('ShopDistrict', back_populates='shop', cascade='all, delete')
+    orders: list[Order] = \
+        sa.orm.relationship('Order', back_populates='shop', cascade='all, delete')
+    couriers: list[Courier] = \
+        sa.orm.relationship('Courier', back_populates='shop', cascade='all, delete')
+    products: list[Product] = \
+        sa.orm.relationship('Product', back_populates='shop', cascade='all, delete')
+
+    # proxies
+    district_names: list[str] = \
+        association_proxy(target_collection='districts', attr='district_name')
+
+    def __init__(self, name: str):
+        self.shop_name = name
+
+    def __repr__(self):
+        return self._repr(shop_id=self.shop_id,
+                          shop_name=self.shop_name)
+
+    def add_district(self, district: District, delivery_time: time):
+        self.districts.append(
+            ShopDistrict(shop=self, district=district, delivery_time=delivery_time)
+        )
+
+    def add_courier(self, courier: Courier):
+        self.couriers.append(courier)
+        courier.shop = self
+
+    def add_product(self, product: Product):
+        self.products.append(product)
+        product.shop = self
+
+
+class District(Base, ReprMixin):
+    __tablename__  = 'districts'
+    __table_args__ = {'comment': 'Районы доставки'}
+
+    district_id   = sa.Column(sa.Integer,    primary_key=True, autoincrement=True)
+    district_name = sa.Column(sa.String(30), nullable=False, unique=True)
+
+    # relations
+    shops: list[ShopDistrict] = \
+        sa.orm.relationship('ShopDistrict', back_populates='district', cascade='all, delete')
+
+    # proxies
+    shop_names: list[str] = \
+        association_proxy(target_collection='shops', attr='shop_name')
+
+    def __init__(self, name: str):
+        self.district_name = name
+
+    def __repr__(self):
+        return self._repr(district_id=self.district_id,
+                          district_name=self.district_name)
 
 
 class ShopDistrict(Base, ReprMixin):
-    __tablename__ = 'shops_districts'
+    __tablename__  = 'shops_districts'
     __table_args__ = {'comment': 'Вспомогательная таблица для связи '
                                  'магазинов и районов доставки'}
 
-    shop_id = sa.Column(
-        sa.Integer, sa.ForeignKey('shops.shop_id', ondelete="CASCADE"),
-        primary_key=True)
-    district_id = sa.Column(
-        sa.Integer, sa.ForeignKey('districts.district_id', ondelete="CASCADE"),
-        primary_key=True)
+    shop_id     = sa.Column(sa.Integer, sa.ForeignKey('shops.shop_id', ondelete="CASCADE"),
+                                        primary_key=True)
+    district_id = sa.Column(sa.Integer, sa.ForeignKey('districts.district_id', ondelete="CASCADE"),
+                                        primary_key=True)
 
     delivery_time = sa.Column(sa.Time, nullable=False)
 
-    shop = sa.orm.relationship('Shop', cascade='save-update')
-    district = sa.orm.relationship('District', cascade='save-update')
+    # relations
+    shop: Shop = \
+        sa.orm.relationship('Shop', cascade='save-update')
+    district: District = \
+        sa.orm.relationship('District', cascade='save-update')
 
     # proxies
-    shop_name = association_proxy(target_collection='shop', attr='shop_name')
-    district_name = association_proxy(target_collection='district', attr='district_name')
+    shop_name: str = \
+        association_proxy(target_collection='shop', attr='shop_name')
+    district_name: str = \
+        association_proxy(target_collection='district', attr='district_name')
 
-    def __init__(self, shop=None, district=None, delivery_time: time = None):
+    def __init__(self, shop: Shop = None, district: District = None, delivery_time: time = None):
         self.shop = shop
         self.district = district
         self.delivery_time = delivery_time
@@ -42,36 +111,21 @@ class ShopDistrict(Base, ReprMixin):
                           delivery_time=self.delivery_time)
 
 
-class District(Base, ReprMixin):
-    __tablename__ = 'districts'
-    __table_args__ = {'comment': 'Районы доставки'}
-
-    district_id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
-    district_name = sa.Column(sa.String(30), nullable=False, unique=True)
-
-    shops = sa.orm.relationship('ShopDistrict', back_populates='district', cascade='all, delete')
-    shop_names = association_proxy(target_collection='shops', attr='shop_name')
-
-    def __init__(self, name):
-        self.district_name = name
-
-    def __repr__(self):
-        return self._repr(district_id=self.district_id,
-                          district_name=self.district_name)
-
-
 class Courier(Base, ReprMixin):
-    __tablename__ = 'couriers'
+    __tablename__  = 'couriers'
     __table_args__ = {'comment': 'Курьеры'}
 
-    courier_id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
-    shop_id = sa.Column(sa.Integer, sa.ForeignKey('shops.shop_id', ondelete="CASCADE"), nullable=False)
-    first_name = sa.Column(sa.String(20), nullable=False)
-    last_name = sa.Column(sa.String(30), nullable=False)
+    courier_id   = sa.Column(sa.Integer,    primary_key=True, autoincrement=True)
+    shop_id      = sa.Column(sa.Integer,    sa.ForeignKey('shops.shop_id', ondelete="CASCADE"), nullable=False)
+    first_name   = sa.Column(sa.String(20), nullable=False)
+    last_name    = sa.Column(sa.String(30), nullable=False)
     phone_number = sa.Column(sa.String(12), nullable=False)
 
-    orders = sa.orm.relationship('Order', back_populates='courier', cascade='all, delete')
-    shop = sa.orm.relationship('Shop', back_populates='couriers')
+    # relations
+    orders: list[Order] = \
+        sa.orm.relationship('Order', back_populates='courier', cascade='all, delete')
+    shop: Shop = \
+        sa.orm.relationship('Shop', back_populates='couriers')
 
     def __repr__(self):
         return self._repr(courier_id=self.courier_id,
@@ -80,29 +134,32 @@ class Courier(Base, ReprMixin):
                           last_name=self.last_name,
                           phone_number=self.phone_number)
 
-    def __init__(self, first_name, last_name, phone, shop=None):
+    def __init__(self, first_name: str, last_name: str, phone: str, shop: Shop = None):
         self.first_name = first_name
         self.last_name = last_name
         self.phone_number = phone
         self.shop = shop
 
-    def set_shop(self, shop):
+    def set_shop(self, shop: Shop):
         self.shop = shop
 
 
 class Client(Base, ReprMixin):
-    __tablename__ = 'clients'
+    __tablename__  = 'clients'
     __table_args__ = {'comment': 'Покупатели'}
 
-    client_id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
-    first_name = sa.Column(sa.String(20), nullable=False)
-    last_name = sa.Column(sa.String(30), nullable=False)
+    client_id    = sa.Column(sa.Integer,    primary_key=True, autoincrement=True)
+    first_name   = sa.Column(sa.String(20), nullable=False)
+    last_name    = sa.Column(sa.String(30), nullable=False)
     phone_number = sa.Column(sa.String(12), nullable=False)
-    district_id = sa.Column(sa.Integer, sa.ForeignKey('districts.district_id'), nullable=False)
-    address = sa.Column(sa.Text, nullable=False)
+    district_id  = sa.Column(sa.Integer,    sa.ForeignKey('districts.district_id'), nullable=False)
+    address      = sa.Column(sa.Text,       nullable=False)
 
-    district = sa.orm.relationship('District')
-    orders = sa.orm.relationship('Order', back_populates='client', cascade='all, delete')
+    # relations
+    district: District \
+        = sa.orm.relationship('District')
+    orders: list[Order] \
+        = sa.orm.relationship('Order', back_populates='client', cascade='all, delete')
 
     def __repr__(self):
         return self._repr(client_id=self.client_id,
@@ -112,7 +169,7 @@ class Client(Base, ReprMixin):
                           district_id=self.district_id,
                           address=self.address)
 
-    def __init__(self, first_name, last_name, phone, district, address):
+    def __init__(self, first_name: str, last_name: str, phone: str, address: str, district: District = None):
         self.first_name = first_name
         self.last_name = last_name
         self.phone_number = phone
@@ -122,72 +179,42 @@ class Client(Base, ReprMixin):
     def set_district(self, district: District):
         self.district = district
 
-    def add_order(self, order, date=datetime.now()):
+    def add_order(self, order: Order, date: datetime = datetime.now()):
         self.orders.append(order)
         order.client = self
         order.purchase_date = date
 
 
-class Shop(Base, ReprMixin):
-    __tablename__ = 'shops'
-    __table_args__ = {'comment': 'Магазины'}
-
-    shop_id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
-    shop_name = sa.Column(sa.String(50), nullable=False)
-
-    districts = sa.orm.relationship('ShopDistrict', back_populates='shop', cascade='all, delete')
-    district_names = association_proxy(target_collection='districts', attr='district_name')
-
-    orders = sa.orm.relationship('Order', back_populates='shop', cascade='all, delete')
-    couriers = sa.orm.relationship('Courier', back_populates='shop', cascade='all, delete')
-    products = sa.orm.relationship('Product', back_populates='shop', cascade='all, delete')
-
-    def __init__(self, name):
-        self.shop_name = name
-
-    def __repr__(self):
-        return self._repr(shop_id=self.shop_id,
-                          shop_name=self.shop_name)
-
-    def add_district(self, district: District, delivery_time: time):
-        self.districts.append(ShopDistrict(shop=self, district=district, delivery_time=delivery_time))
-
-    def add_courier(self, courier: Courier):
-        self.couriers.append(courier)
-        courier.shop = self
-
-    def add_product(self, product):
-        self.products.append(product)
-        product.shop = self
-
-
 class Status(Base, ReprMixin):
-    __tablename__ = 'statuses'
+    __tablename__  = 'statuses'
     __table_args__ = {'comment': 'Статусы заказов'}
 
-    status_id = sa.Column(sa.Integer, primary_key=True)
-    status = sa.Column(sa.String(18), nullable=False, unique=True)
+    status_id = sa.Column(sa.Integer,    primary_key=True)
+    status    = sa.Column(sa.String(18), nullable=False, unique=True)
 
     def __repr__(self):
         return self._repr(status_id=self.status_id,
                           status=self.status)
 
-    def __init__(self, status):
+    def __init__(self, status: str):
         self.status = status
 
 
 class Product(Base, ReprMixin):
-    __tablename__ = 'products'
+    __tablename__  = 'products'
     __table_args__ = {'comment': 'Товары'}
 
-    product_id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
-    shop_id = sa.Column(sa.Integer, sa.ForeignKey('shops.shop_id', ondelete="CASCADE"), nullable=False)
-    product_name = sa.Column(sa.Text, nullable=False)
-    price = sa.Column(sa.Numeric(10, 2), nullable=False)
-    quantity = sa.Column(sa.Integer)
+    product_id   = sa.Column(sa.Integer,        primary_key=True, autoincrement=True)
+    shop_id      = sa.Column(sa.Integer,        sa.ForeignKey('shops.shop_id', ondelete="CASCADE"), nullable=False)
+    product_name = sa.Column(sa.Text,           nullable=False)
+    price        = sa.Column(sa.Numeric(10, 2), nullable=False)
+    quantity     = sa.Column(sa.Integer)
 
-    orders = sa.orm.relationship('OrderProducts', back_populates='product', cascade='all, delete')
-    shop = sa.orm.relationship('Shop', back_populates='products')
+    # relations
+    orders: list[Order] = \
+        sa.orm.relationship('OrderProducts', back_populates='product', cascade='all, delete')
+    shop: Shop = \
+        sa.orm.relationship('Shop', back_populates='products')
 
     def __repr__(self):
         return self._repr(product_id=self.product_id,
@@ -196,7 +223,7 @@ class Product(Base, ReprMixin):
                           price=self.price,
                           quantity=self.quantity)
 
-    def __init__(self, name, price, quantity, shop):
+    def __init__(self, name: str, price: float, quantity: int, shop: Shop):
         self.product_name = name
         self.price = price
         self.quantity = quantity
@@ -204,23 +231,31 @@ class Product(Base, ReprMixin):
 
 
 class Order(Base, ReprMixin):
-    __tablename__ = 'orders'
+    __tablename__  = 'orders'
     __table_args__ = {'comment': 'Заказы'}
 
-    order_id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
-    client_id = sa.Column(sa.Integer, sa.ForeignKey('clients.client_id', ondelete="CASCADE"), nullable=False)
-    shop_id = sa.Column(sa.Integer, sa.ForeignKey('shops.shop_id', ondelete="CASCADE"), nullable=False)
+    order_id      = sa.Column(sa.Integer,  primary_key=True, autoincrement=True)
     purchase_date = sa.Column(sa.DateTime, nullable=False)
-    status_id = sa.Column(sa.Integer, sa.ForeignKey('statuses.status_id'), nullable=False, default=1)
-    courier_id = sa.Column(sa.Integer, sa.ForeignKey('couriers.courier_id'))
+    client_id     = sa.Column(sa.Integer,  sa.ForeignKey('clients.client_id', ondelete="CASCADE"), nullable=False)
+    shop_id       = sa.Column(sa.Integer,  sa.ForeignKey('shops.shop_id', ondelete="CASCADE"), nullable=False)
+    status_id     = sa.Column(sa.Integer,  sa.ForeignKey('statuses.status_id'), nullable=False, default=1)
+    courier_id    = sa.Column(sa.Integer,  sa.ForeignKey('couriers.courier_id'))
 
-    client = sa.orm.relationship('Client', back_populates='orders')
-    shop = sa.orm.relationship('Shop', back_populates='orders')
-    courier = sa.orm.relationship('Courier', back_populates='orders')
-    status = sa.orm.relationship('Status')
-    products: list = sa.orm.relationship('OrderProducts', back_populates='order', cascade='all, delete')
+    # relations
+    client: Client = \
+        sa.orm.relationship('Client', back_populates='orders')
+    shop: Shop = \
+        sa.orm.relationship('Shop', back_populates='orders')
+    courier: Courier = \
+        sa.orm.relationship('Courier', back_populates='orders')
+    status: Status = \
+        sa.orm.relationship('Status')
+    products: list[Product] \
+        = sa.orm.relationship('OrderProducts', back_populates='order', cascade='all, delete')
 
-    products_names = association_proxy('products', 'products_names')
+    # proxies
+    products_names: list[str] = \
+        association_proxy('products', 'products_names')
 
     def __repr__(self):
         return self._repr(order_id=self.order_id,
@@ -230,8 +265,7 @@ class Order(Base, ReprMixin):
                           status_id=self.status_id,
                           courier_id=self.courier_id)
 
-    def __init__(self, client: Client = None, shop: Shop = None,
-                 date: datetime = datetime.now(), courier: Courier = None):
+    def __init__(self, client: Client = None, shop: Shop = None, date: datetime = datetime.now(), courier: Courier = None):
         self.client = client
         self.shop = shop
         self.purchase_date = date
@@ -241,7 +275,7 @@ class Order(Base, ReprMixin):
         if product.quantity <= quantity:
             quantity = product.quantity
         if product.product_name in self.products_names:
-            self.products[self.products_names.index(product.product_name)].quantity+=quantity
+            self.products[self.products_names.index(product.product_name)].quantity += quantity
         else:
             self.products.append(OrderProducts(order=self, product=product, quantity=quantity))
         product.quantity -= quantity
@@ -259,40 +293,45 @@ class Order(Base, ReprMixin):
         self.courier = courier
 
     @property
-    def price(self):
+    def price(self) -> Decimal:
         products = []
         quantities = []
         for item in self.products:
             products.append(item.product)
             quantities.append(item.quantity)
-        s = 0
+        s = Decimal(0.00)
         for product, quantity in products, quantities:
             s += product.price * quantity
         return s
 
 
 class OrderProducts(Base, ReprMixin):
-    __tablename__ = 'order_products'
+    __tablename__  = 'order_products'
     __table_args__ = {'comment': 'Вспомогательная таблица для связи '
                                  'заказа и товаров в этом заказе'}
 
-    order_id = sa.Column(sa.Integer, sa.ForeignKey('orders.order_id', ondelete='CASCADE'),
-                         primary_key=True, nullable=False)
+    order_id   = sa.Column(sa.Integer, sa.ForeignKey('orders.order_id', ondelete='CASCADE'),
+                                       primary_key=True, nullable=False)
     product_id = sa.Column(sa.Integer, sa.ForeignKey('products.product_id', ondelete='CASCADE'),
-                           primary_key=True, nullable=False)
-    quantity = sa.Column(sa.Integer, nullable=False)
+                                       primary_key=True, nullable=False)
+    quantity  = sa.Column(sa.Integer,  nullable=False)
 
-    order = sa.orm.relationship('Order')
-    product = sa.orm.relationship('Product')
+    # relations
+    order: Order = \
+        sa.orm.relationship('Order')
+    product: Product = \
+        sa.orm.relationship('Product')
 
-    products_names = association_proxy('product', 'product_name')
+    # proxies
+    products_names: list[str] = \
+        association_proxy('product', 'product_name')
 
     def __repr__(self):
         return self._repr(order_id=self.order_id,
                           product_id=self.product_id,
                           quantity=self.quantity)
 
-    def __init__(self, order=None, product=None, quantity=None):
+    def __init__(self, order: Order = None, product: Product = None, quantity: int = None):
         self.order = order
         self.product = product
         self.quantity = quantity

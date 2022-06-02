@@ -2,16 +2,11 @@ import sqlalchemy as sa
 from datetime import datetime, time
 from random import randint
 
+from config import Base, engine, Session
 from orm.tables import *
-engine = sa.create_engine(
-    'postgresql://palyaros02:paSS123@localhost:5432/Shop_ORM',
-    echo=False,
-)
 
 Base.metadata.drop_all(engine)
 Base.metadata.create_all(engine)
-
-Session = sa.orm.sessionmaker(engine)
 
 districts = list(map(District,
                      ['Академический', 'Алексеевский', 'Алтуфьевский', 'Арбат', 'Аэропорт',
@@ -20,7 +15,8 @@ districts = list(map(District,
 
 shops = list(map(Shop, ['Рога и Копыта', 'Эльдорадо', 'У Петровича']))
 
-statuses = list(map(Status, ['Создан', 'Оплачен', 'Собран', 'Передан в доставку', 'Доставлен']))
+statuses = list(map(Status,
+                ['Создан', 'Оплачен', 'Собран', 'Передан в доставку', 'Доставлен']))
 
 couriers = [('Pauly', 'Higgen', '4075096814'),
             ('Dre', 'Finnes', '9994922979'),
@@ -57,21 +53,21 @@ products = [
     ('Island Oasis - Magarita Mix', 281.79, 5)]
 
 clients = [
-('Arleyne', 'Crotch', '4249328283', districts[8], '31739 Scott Drive'),
-('Vinny', 'Buckingham', '4313988521', districts[10], '5 Rowland Street'),
-('Kellia', 'Pakeman', '1071536087', districts[9], '022 Westend Center'),
-('Elnora', 'Fallows', '1371280446', districts[6], '40 Eliot Trail'),
-('Travis', 'Liptrod', '4746859534', districts[4], '61059 Grim Way'),
-('Phillipp', 'Havock', '1244803317', districts[6], '865 Hovde Trail'),
-('Clarine', 'Canero', '2103286631', districts[9], '52084 Anhalt Pass'),
-('Nickolaus', 'West', '2106108169', districts[5], '582 Ludington Hill'),
-('Benni', 'Youel', '1203091967', districts[1], '85331 Mcbride Street'),
-('Clarissa', 'Dutson', '1887254030', districts[3], '05 Anzinger Alley'),
-('Germain', 'Winney', '7971153671', districts[1], '7 Sullivan Court'),
-('Effie', 'Livingston', '9604413203', districts[2], '587 Summer Ridge Lane'),
-('Orlando', 'McGoldrick', '7617674904', districts[5], '423 Sage Hill'),
-('Yetta', 'Whettleton', '3943583403', districts[9], '3 Shelley Road'),
-('Britt', 'Kaye', '9697865395', districts[9], '7472 Merry Drive')]
+    ('Arleyne', 'Crotch', '4249328283', '31739 Scott Drive', districts[8]),
+    ('Vinny', 'Buckingham', '4313988521', '5 Rowland Street', districts[10]),
+    ('Kellia', 'Pakeman', '1071536087', '022 Westend Center', districts[9]),
+    ('Elnora', 'Fallows', '1371280446', '40 Eliot Trail', districts[6]),
+    ('Travis', 'Liptrod', '4746859534', '61059 Grim Way', districts[4]),
+    ('Phillipp', 'Havock', '1244803317', '865 Hovde Trail', districts[6]),
+    ('Clarine', 'Canero', '2103286631', '52084 Anhalt Pass', districts[9]),
+    ('Nickolaus', 'West', '2106108169', '582 Ludington Hill', districts[5]),
+    ('Benni', 'Youel', '1203091967', '85331 Mcbride Street', districts[1]),
+    ('Clarissa', 'Dutson', '1887254030', '05 Anzinger Alley', districts[3]),
+    ('Germain', 'Winney', '7971153671', '7 Sullivan Court', districts[1]),
+    ('Effie', 'Livingston', '9604413203', '587 Summer Ridge Lane', districts[2]),
+    ('Orlando', 'McGoldrick', '7617674904', '423 Sage Hill', districts[5]),
+    ('Yetta', 'Whettleton', '3943583403', '3 Shelley Road', districts[9]),
+    ('Britt', 'Kaye', '9697865395', '7472 Merry Drive', districts[9])]
 clients = [Client(*client) for client in clients]
 
 with Session() as session:
@@ -104,11 +100,12 @@ with Session() as session:
     session.add_all(clients)
     orders = []
     for client in clients:
-        orders.append(Order(client, shops[randint(0, 2)], datetime.now(), shop.couriers[randint(0, len(shop.couriers)-1)]))
+        orders.append(
+            Order(client, shops[randint(0, 2)], shop.couriers[randint(0, len(shop.couriers) - 1)]))
 
     for order in orders:
         for i in range(randint(0, 5)):
-            order.add_product(order.shop.products[randint(0, len(order.shop.products)-1)], randint(0, 5))
+            order.add_product(order.shop.products[randint(0, len(order.shop.products) - 1)], randint(0, 5))
 
     session.commit()
 
@@ -126,6 +123,3 @@ with Session() as session:
     #     print(session.query(Product.product_name, Product.price, Product.quantity).\
     #           filter(Product.shop_id == shop.shop_id).all())
     #     print()
-
-
-

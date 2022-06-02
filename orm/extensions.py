@@ -2,9 +2,6 @@ from sqlalchemy.orm.exc import DetachedInstanceError
 
 
 class ReprMixin:
-    """
-    Вспомогательная миксина для красивых логов
-    """
     def _repr(self, **fields) -> str:
         field_strings = []
         at_least_one_attached_attribute = False
