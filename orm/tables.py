@@ -1,4 +1,3 @@
-from __future__ import annotations
 from decimal import Decimal
 
 import sqlalchemy as sa
@@ -19,13 +18,13 @@ class Shop(Base, ReprMixin):
     shop_name = sa.Column(sa.String(50), nullable=False)
 
     # relations
-    districts: list[ShopDistrict] = \
+    districts: list['ShopDistrict'] = \
         sa.orm.relationship('ShopDistrict', back_populates='shop', cascade='all, delete')
-    orders: list[Order] = \
+    orders: list['Order'] = \
         sa.orm.relationship('Order', back_populates='shop', cascade='all, delete')
-    couriers: list[Courier] = \
+    couriers: list['Courier'] = \
         sa.orm.relationship('Courier', back_populates='shop', cascade='all, delete')
-    products: list[Product] = \
+    products: list['Product'] = \
         sa.orm.relationship('Product', back_populates='shop', cascade='all, delete')
 
     # proxies
@@ -39,16 +38,16 @@ class Shop(Base, ReprMixin):
         return self._repr(shop_id=self.shop_id,
                           shop_name=self.shop_name)
 
-    def add_district(self, district: District, delivery_time: time):
+    def add_district(self, district: 'District', delivery_time: time):
         self.districts.append(
             ShopDistrict(shop=self, district=district, delivery_time=delivery_time)
         )
 
-    def add_courier(self, courier: Courier):
+    def add_courier(self, courier: 'Courier'):
         self.couriers.append(courier)
         courier.shop = self
 
-    def add_product(self, product: Product):
+    def add_product(self, product: 'Product'):
         self.products.append(product)
         product.shop = self
 
@@ -61,7 +60,7 @@ class District(Base, ReprMixin):
     district_name = sa.Column(sa.String(30), nullable=False, unique=True)
 
     # relations
-    shops: list[ShopDistrict] = \
+    shops: list['ShopDistrict'] = \
         sa.orm.relationship('ShopDistrict', back_populates='district', cascade='all, delete')
 
     # proxies
@@ -122,9 +121,9 @@ class Courier(Base, ReprMixin):
     phone_number = sa.Column(sa.String(12), nullable=False)
 
     # relations
-    orders: list[Order] = \
+    orders: list['Order'] = \
         sa.orm.relationship('Order', back_populates='courier', cascade='all, delete')
-    shop: Shop = \
+    shop: 'Shop' = \
         sa.orm.relationship('Shop', back_populates='couriers')
 
     def __repr__(self):
@@ -158,7 +157,7 @@ class Client(Base, ReprMixin):
     # relations
     district: District \
         = sa.orm.relationship('District')
-    orders: list[Order] \
+    orders: list['Order'] \
         = sa.orm.relationship('Order', back_populates='client', cascade='all, delete')
 
     def __repr__(self):
@@ -179,7 +178,7 @@ class Client(Base, ReprMixin):
     def set_district(self, district: District):
         self.district = district
 
-    def add_order(self, order: Order, date: datetime = datetime.now()):
+    def add_order(self, order: 'Order', date: datetime = datetime.now()):
         self.orders.append(order)
         order.client = self
         order.purchase_date = date
@@ -211,7 +210,7 @@ class Product(Base, ReprMixin):
     quantity     = sa.Column(sa.Integer)
 
     # relations
-    orders: list[Order] = \
+    orders: list['Order'] = \
         sa.orm.relationship('OrderProducts', back_populates='product', cascade='all, delete')
     shop: Shop = \
         sa.orm.relationship('Shop', back_populates='products')
@@ -265,7 +264,8 @@ class Order(Base, ReprMixin):
                           status_id=self.status_id,
                           courier_id=self.courier_id)
 
-    def __init__(self, client: Client = None, shop: Shop = None, date: datetime = datetime.now(), courier: Courier = None):
+    def __init__(self, client: Client = None, shop: Shop = None,
+                 date: datetime = datetime.now(), courier: Courier = None):
         self.client = client
         self.shop = shop
         self.purchase_date = date
