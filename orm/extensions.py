@@ -1,6 +1,5 @@
 from sqlalchemy.orm.exc import DetachedInstanceError
 
-
 class Extension:
     def _repr(self, **fields) -> str:
         field_strings = []
@@ -16,9 +15,8 @@ class Extension:
             return f"<{self.__class__.__name__}({','.join(field_strings)})>"
         return f"<{self.__class__.__name__} {id(self)}>"
 
-    def assign(self, value, Class):
+    def set_id_or_link(self, value, Class):
         attr = Class.__name__.lower()
         if isinstance(value, int):
-            eval(f'self.{attr}_id = {value}')
-        elif isinstance(value, Class or None):
-            eval(f'self.{attr} = {value}')
+            attr = f'{attr}_id'
+        self.__setattr__(attr, value)

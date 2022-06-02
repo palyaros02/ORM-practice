@@ -4,6 +4,7 @@ from typing import Union
 import sqlalchemy as sa
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm.collections import attribute_mapped_collection
+from sqlalchemy.exc import IntegrityError, InvalidRequestError
 
 from datetime import datetime, time
 
@@ -41,8 +42,8 @@ class Shop(Base, Extension):
         return self._repr(shop_id=self.shop_id,
                           shop_name=self.shop_name)
 
-    def add_district(self, district: 'District', delivery_time: time):
-        self.districts.append(
+    def add_district(self, district: Union[int, 'District'], delivery_time: time):
+        self.shop_districts.append(
             ShopDistrict(shop=self, district=district, delivery_time=delivery_time)
         )
 
@@ -63,14 +64,14 @@ class District(Base, Extension):
     district_name = sa.Column(sa.String(30), nullable=False, unique=True)
 
     # relations
-    shop_district: list['ShopDistrict'] = \
+    shop_districts: list['ShopDistrict'] = \
         sa.orm.relationship('ShopDistrict', back_populates='district', cascade='all, delete')
 
     # proxies
     shops: list[Shop] = \
-        association_proxy(target_collection='shop_district', attr='shop')
+        association_proxy(target_collection='shop_districts', attr='shop')
     shop_names: list[str] = \
-        association_proxy(target_collection='shop_district', attr='shop_name')
+        association_proxy(target_collection='shop_districts', attr='shop_name')
 
     def __init__(self, name: str):
         self.district_name = name
@@ -93,9 +94,9 @@ class ShopDistrict(Base, Extension):
     delivery_time = sa.Column(sa.Time, nullable=False)
 
     # relations
-    shop: Shop = \
+    shop: 'Shop' = \
         sa.orm.relationship('Shop', cascade='save-update')
-    district: District = \
+    district: 'District' = \
         sa.orm.relationship('District', cascade='save-update')
 
     # proxies
@@ -104,18 +105,20 @@ class ShopDistrict(Base, Extension):
     district_name: str = \
         association_proxy(target_collection='district', attr='district_name')
 
-    def __init__(self, shop: Union[Shop, int] = None, district: Union[District, int] = None, delivery_time: time = None):
-        self.assign(shop, Shop)
-        # if isinstance(shop, int):
-        #     self.shop_id = shop
-        # elif isinstance(district, District or None):
-        #     self.shop = shop
-        self.assign(district, District)
-        # if isinstance(district, int):
-        #     self.district_id = district
-        # elif isinstance(district, District or None):
-        #     self.district = district
+    def __init__(self, shop: Shop = None, district: District = None, delivery_time: time = None):
+        self.shop = shop
+        self.district = district
         self.delivery_time = delivery_time
+    # def __init__(self, shop: Union['Shop', int] = None, district: Union['District', int] = None,
+    #              delivery_time: time = None):
+    #     try:
+    #         self.set_id_or_link(shop, Shop)
+    #         self.set_id_or_link(district, District)
+    #         self.delivery_time = delivery_time
+    #     except IntegrityError:
+    #         pass
+    #     except InvalidRequestError as e:
+    #         print(e)
 
     def __repr__(self):
         return self._repr(shop_id=self.shop_id,
@@ -146,14 +149,14 @@ class Courier(Base, Extension):
                           last_name=self.last_name,
                           phone_number=self.phone_number)
 
-    def __init__(self, first_name: str, last_name: str, phone: str, shop: Shop = None):
+    def __init__(self, first_name: str, last_name: str, phone: str, shop: Union[int, Shop] = None):
         self.first_name = first_name
         self.last_name = last_name
         self.phone_number = phone
-        self.shop = shop
+        self.set_id_or_link(shop, Shop)
 
-    def set_shop(self, shop: Shop):
-        self.shop = shop
+    def set_shop(self, shop: Union[int, Shop]):
+        self.set_id_or_link(shop, Shop)
 
 
 class Client(Base, Extension):
@@ -178,7 +181,7 @@ class Client(Base, Extension):
                           first_name=self.first_name,
                           last_name=self.last_name,
                           phone_number=self.phone_number,
-                          district=self.district,
+                          district_id=self.district_id,
                           address=self.address)
 
     def __init__(self, first_name: str, last_name: str, phone: str, address: str,
@@ -187,13 +190,10 @@ class Client(Base, Extension):
         self.last_name = last_name
         self.phone_number = phone
         self.address = address
-        if isinstance(district, int):
-            self.district_id = district
-        elif isinstance(district, District or None):
-            self.district = district
+        self.set_id_or_link(district, District)
 
-    def set_district(self, district: District):
-        self.district = district
+    def set_district(self, district: Union[int, District] = None):
+        self.set_id_or_link(district, District)
 
     def add_order(self, order: 'Order', date: datetime = datetime.now()):
         self.orders.append(order)
@@ -206,14 +206,14 @@ class Status(Base, Extension):
     __table_args__ = {'comment': 'Статусы заказов'}
 
     status_id = sa.Column(sa.Integer,    primary_key=True)
-    status    = sa.Column(sa.String(18), nullable=False, unique=True)
+    status_name    = sa.Column(sa.String(18), nullable=False, unique=True)
 
     def __repr__(self):
         return self._repr(status_id=self.status_id,
-                          status=self.status)
+                          status_name=self.status_name)
 
-    def __init__(self, status: str):
-        self.status = status
+    def __init__(self, status_name: str):
+        self.status_name = status_name
 
 
 class Product(Base, Extension):
@@ -239,11 +239,11 @@ class Product(Base, Extension):
                           price=self.price,
                           quantity=self.quantity)
 
-    def __init__(self, name: str, price: float, quantity: int, shop: Shop):
+    def __init__(self, name: str, price: float, quantity: int, shop: Union[Shop, int] = None):
         self.product_name = name
         self.price = price
         self.quantity = quantity
-        self.shop = shop
+        self.set_id_or_link(shop, Shop)
 
 
 class Order(Base, Extension):
@@ -281,12 +281,12 @@ class Order(Base, Extension):
                           status_id=self.status_id,
                           courier_id=self.courier_id)
 
-    def __init__(self, client: Client = None, shop: Shop = None,
-                 courier: Courier = None, date: datetime = datetime.now()):
-        self.client = client
-        self.shop = shop
+    def __init__(self, client: Union[Client, int] = None, shop: Union[Shop, int] = None,
+                 courier: Union[Courier, int] = None, date: datetime = datetime.now()):
+        self.set_id_or_link(client, Client)
+        self.set_id_or_link(shop, Shop)
+        self.set_id_or_link(courier, Courier)
         self.purchase_date = date
-        self.courier = courier
 
     def add_product(self, product: Product, quantity=1):
         if product.quantity <= quantity:
@@ -303,11 +303,11 @@ class Order(Base, Extension):
         self.products.remove(order_product)
         del order_product
 
-    def set_status(self, status: Status):
-        self.status = status
+    def set_status(self, status: Union[Status, int]):
+        self.set_id_or_link(status, Status)
 
-    def set_courier(self, courier: Courier):
-        self.courier = courier
+    def set_courier(self, courier: Union[Courier, int]):
+        self.set_id_or_link(courier, Courier)
 
     @property
     def price(self) -> Decimal:
@@ -348,9 +348,9 @@ class OrderProducts(Base, Extension):
                           product_id=self.product_id,
                           quantity=self.quantity)
 
-    def __init__(self, order: Order = None, product: Product = None, quantity: int = None):
-        self.order = order
-        self.product = product
+    def __init__(self, order: Union[Order, int] = None, product: Union[Product, int] = None, quantity: int = None):
+        self.set_id_or_link(order, Order)
+        self.set_id_or_link(product, Product)
         self.quantity = quantity
 
 
