@@ -17,10 +17,8 @@ class Extension:
         return f"<{self.__class__.__name__} {id(self)}>"
 
     def assign(self, value, Class):
-        # TODO разобраться
-        class_def = Class.__class__
-        attr = class_def.__name__.lower()
+        attr = Class.__name__.lower()
         if isinstance(value, int):
-            eval(f'self.{attr}_id = value')
-        elif isinstance(value, class_def or None):
-            eval(f'self.{attr} = value')
+            eval(f'self.{attr}_id = {value}')
+        elif isinstance(value, Class or None):
+            eval(f'self.{attr} = {value}')
