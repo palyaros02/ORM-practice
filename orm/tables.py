@@ -32,14 +32,14 @@ class Product(Base, Extension):
     __table_args__ = {'comment': 'Товары'}
 
     product_id   = sa.Column(sa.Integer,        primary_key=True, autoincrement=True)
-    shop_id      = sa.Column(sa.Integer,        sa.ForeignKey('shops.shop_id', ondelete="CASCADE"), nullable=False)
+    shop_id      = sa.Column(sa.Integer,        sa.ForeignKey('shops.shop_id', ondelete="CASCADE"))
     product_name = sa.Column(sa.Text,           nullable=False)
     price        = sa.Column(sa.Numeric(10, 2), nullable=False)
     quantity     = sa.Column(sa.Integer)
 
     # relations
     orders: list['OrderProducts'] = \
-        sa.orm.relationship('OrderProducts', back_populates='product', cascade='all, delete', lazy='subquery')
+        sa.orm.relationship('OrderProducts', back_populates='product', cascade='save-update, merge, delete, delete-orphan', lazy='subquery')
     shop: 'Shop' = \
         sa.orm.relationship('Shop', back_populates='products', lazy='subquery')
 
@@ -50,7 +50,7 @@ class Product(Base, Extension):
                           price=self.price,
                           quantity=self.quantity)
 
-    def __init__(self, name: str, price: float, quantity: int, shop: Union['Shop', int] = None):
+    def __init__(self, name: str, price: Decimal, quantity: int, shop: Union['Shop', int] = None):
         self.product_name = name
         self.price = price
         self.quantity = quantity
@@ -79,9 +79,9 @@ class OrderProducts(Base, Extension):
 
     # relations
     order: 'Order' = \
-        sa.orm.relationship('Order', lazy='subquery')
+        sa.orm.relationship('Order', cascade='save-update', lazy='subquery')
     product: Product = \
-        sa.orm.relationship('Product', lazy='subquery')
+        sa.orm.relationship('Product', cascade='save-update', lazy='subquery')
 
     # proxies
     products_names: list[str] = \
@@ -104,8 +104,8 @@ class Order(Base, Extension):
 
     order_id      = sa.Column(sa.Integer,  primary_key=True, autoincrement=True)
     purchase_date = sa.Column(sa.DateTime, nullable=False)
-    client_id     = sa.Column(sa.Integer,  sa.ForeignKey('clients.client_id', ondelete="CASCADE"), nullable=False)
-    shop_id       = sa.Column(sa.Integer,  sa.ForeignKey('shops.shop_id', ondelete="CASCADE"), nullable=False)
+    client_id     = sa.Column(sa.Integer,  sa.ForeignKey('clients.client_id', ondelete="CASCADE"))
+    shop_id       = sa.Column(sa.Integer,  sa.ForeignKey('shops.shop_id', ondelete="CASCADE"))
     status_id     = sa.Column(sa.Integer,  sa.ForeignKey('statuses.status_id'), nullable=False, default=1)
     courier_id    = sa.Column(sa.Integer,  sa.ForeignKey('couriers.courier_id'))
 
@@ -119,7 +119,8 @@ class Order(Base, Extension):
     status: Status = \
         sa.orm.relationship('Status', lazy='subquery')
     products: list['OrderProducts'] \
-        = sa.orm.relationship('OrderProducts', back_populates='order', cascade='all, delete', lazy='subquery')
+        = sa.orm.relationship('OrderProducts', back_populates='order',
+                              cascade='save-update, merge, delete, delete-orphan', lazy='subquery')
 
     # proxies
     products_names: list[str] = \
@@ -141,7 +142,7 @@ class Order(Base, Extension):
             'Магазин': self.shop.shop_name,
             'Дата': self.purchase_date,
             'Статус': self.status.status_name,
-            'Курьер': 'None' if self.courier is None else f'{self.courier.first_name} {self.courier.last_name}, '
+            'Курьер': 'Не назначен' if self.courier is None else f'{self.courier.first_name} {self.courier.last_name}, '
                                                           f'тел: {self.courier.phone_number}'}
 
     def __init__(self, client: Union['Client', int] = None, shop: Union['Shop', int] = None,
@@ -152,6 +153,7 @@ class Order(Base, Extension):
         self.purchase_date = date
 
     def add_product(self, product: Product, quantity=1):
+        # Добавление товара в заказ
         if product.quantity <= quantity:
             quantity = product.quantity
         if product.product_name in self.products_names:
@@ -161,19 +163,24 @@ class Order(Base, Extension):
         product.quantity -= quantity
 
     def remove_product(self, product: Product):
-        order_product = sorted(product.orders, key=lambda obj: obj.product_id == product.product_id, reverse=True)[0]
+        # Удаление товара из заказа
+        order_product = list(filter(lambda x: x.product_id == product.product_id,
+                                    self.products,))[0]
         product.quantity += order_product.quantity
         self.products.remove(order_product)
         del order_product
 
     def set_status(self, status: Union[Status, int]):
+        # изменение статуса заказа
         self.set_id_or_link(status, Status)
 
     def set_courier(self, courier: Union['Courier', int]):
+        # назначение курьера
         self.set_id_or_link(courier, Courier)
 
     @property
     def price(self) -> Decimal:
+        # стоимость заказа
         products = []
         quantities = []
         for item in self.products:
@@ -229,19 +236,25 @@ class Shop(Base, Extension):
 
     # relations
     shop_districts: list['ShopDistrict'] = \
-        sa.orm.relationship('ShopDistrict', back_populates='shop', cascade='all, delete', lazy='subquery')
+        sa.orm.relationship('ShopDistrict', back_populates='shop', cascade='save-update, merge, delete, delete-orphan',
+                            lazy='subquery')
     orders: list['Order'] = \
-        sa.orm.relationship('Order', back_populates='shop', cascade='all, delete', lazy='subquery')
+        sa.orm.relationship('Order', back_populates='shop', cascade='save-update, merge, delete, delete-orphan',
+                            lazy='subquery')
     couriers: list['Courier'] = \
-        sa.orm.relationship('Courier', back_populates='shop', cascade='all, delete', lazy='subquery')
+        sa.orm.relationship('Courier', back_populates='shop', cascade='save-update, merge, delete, delete-orphan',
+                            lazy='subquery')
     products: list['Product'] = \
-        sa.orm.relationship('Product', back_populates='shop', cascade='all, delete', lazy='subquery')
+        sa.orm.relationship('Product', back_populates='shop', cascade='save-update, merge, delete, delete-orphan',
+                            lazy='subquery')
 
     # proxies
     districts: list['District'] = \
         association_proxy(target_collection='shop_districts', attr='district')
     district_names: list[str] = \
         association_proxy(target_collection='shop_districts', attr='district_name')
+    product_names: list[str] = \
+        association_proxy(target_collection='products', attr='product_name')
 
     def __init__(self, name: str):
         self.shop_name = name
@@ -269,9 +282,18 @@ class Shop(Base, Extension):
         self.couriers.append(courier)
         courier.shop = self
 
+    def get_courier_names(self):
+        return [f'{c.first_name} {c.last_name}, {c.phone_number}' for c in self.couriers]
+
+    def del_courier(self, courier: 'Courier'):
+        self.products.remove(courier)
+
     def add_product(self, product: 'Product'):
         self.products.append(product)
         product.shop = self
+
+    def del_product(self, product: Product):
+        self.products.remove(product)
 
 
 class District(Base, Extension):
@@ -283,7 +305,8 @@ class District(Base, Extension):
 
     # relations
     shop_districts: list['ShopDistrict'] = \
-        sa.orm.relationship('ShopDistrict', back_populates='district', cascade='all, delete', lazy='subquery')
+        sa.orm.relationship('ShopDistrict', back_populates='district',
+                            cascade='save-update, merge, delete, delete-orphan', lazy='subquery')
 
     # proxies
     shops: list[Shop] = \
@@ -311,16 +334,16 @@ class Courier(Base, Extension):
     __table_args__ = {'comment': 'Курьеры'}
 
     courier_id   = sa.Column(sa.Integer,    primary_key=True, autoincrement=True)
-    shop_id      = sa.Column(sa.Integer,    sa.ForeignKey('shops.shop_id', ondelete="CASCADE"), nullable=False)
+    shop_id      = sa.Column(sa.Integer,    sa.ForeignKey('shops.shop_id', ondelete="CASCADE"))
     first_name   = sa.Column(sa.String(20), nullable=False)
     last_name    = sa.Column(sa.String(30), nullable=False)
     phone_number = sa.Column(sa.String(12), nullable=False)
 
     # relations
     orders: list['Order'] = \
-        sa.orm.relationship('Order', back_populates='courier', cascade='all, delete', lazy='subquery')
+        sa.orm.relationship('Order', back_populates='courier', cascade='save-update', lazy='subquery')
     shop: 'Shop' = \
-        sa.orm.relationship('Shop', back_populates='couriers', lazy='subquery')
+        sa.orm.relationship('Shop', back_populates='couriers', cascade='save-update', lazy='subquery')
 
     def __repr__(self):
         return self._repr(courier_id=self.courier_id,
@@ -338,6 +361,9 @@ class Courier(Base, Extension):
             'Заказы': [f'id: {o.order_id}, Адрес: {o.client.address}, '
                        f'Контакт: {o.client.first_name} {o.client.address}' for o in self.orders]
         }
+
+    def get_name_phone(self):
+        return f'{self.first_name} {self.last_name}, {self.phone_number}'
 
     def __init__(self, first_name: str, last_name: str, phone: str, shop: Union[int, Shop] = None):
         self.first_name = first_name
@@ -364,7 +390,8 @@ class Client(Base, Extension):
     district: District \
         = sa.orm.relationship('District', lazy='subquery')
     orders: list['Order'] \
-        = sa.orm.relationship('Order', back_populates='client', cascade='all, delete', lazy='subquery')
+        = sa.orm.relationship('Order', back_populates='client',
+                              cascade='save-update, merge, delete, delete-orphan', lazy='subquery')
 
     def __repr__(self):
         return self._repr(client_id=self.client_id,
@@ -400,6 +427,10 @@ class Client(Base, Extension):
         self.orders.append(order)
         order.client = self
         order.purchase_date = date
+
+    def del_order(self, order: Order):
+        self.orders.remove(order)
+        del order
 
 
 class Log(Base, Extension):

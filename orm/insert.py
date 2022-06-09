@@ -74,7 +74,7 @@ def insert():
         'Чертаново Южное', 'Щукино', 'Южнопортовый', 'Якиманка', 'Ярославский', 'Ясенево']))
 
     statuses = list(map(Status, [
-        'Создан', 'Оплачен', 'Собран', 'Передан в доставку', 'Доставлен']))
+        'Создан', 'Оплачен', 'Отменен', 'Передан в доставку', 'Доставлен']))
 
     shops = list(map(Shop, [
         'Рога и Копыта', 'Эльдорадо', 'У Петровича']))
@@ -138,13 +138,13 @@ def insert():
         session.add_all(shops)
         session.add_all(couriers)
 
-        for d, t in zip(districts[:3], [time(1, 15), time(2, 25), time(3, 0)]):
+        for d, t in zip(districts[1:10], [time(1, 15), time(2, 25), time(3, 0),time(1, 15), time(2, 25), time(3, 0),time(1, 15), time(2, 25), time(3, 0)]):
             shops[0].add_district(d, t)
 
-        for d, t in zip(districts[:7:2], [time(2, 15), time(5, 30), time(2, 0)]):
+        for d, t in zip(districts[:10:2], [time(2, 15), time(5, 30), time(2, 0),time(2, 15), time(5, 30), time(2, 0),time(2, 15), time(5, 30), time(2, 0)]):
             shops[1].add_district(d, t)
 
-        for d, t in zip(districts[1:7:2], [time(4, 15), time(2, 30), time(1, 15)]):
+        for d, t in zip(districts[1:10:2], [time(4, 15), time(2, 30), time(1, 15),time(4, 15), time(2, 30), time(1, 15),time(4, 15), time(2, 30), time(1, 15)]):
             shops[2].add_district(d, t)
 
         for courier in couriers[:3]:
