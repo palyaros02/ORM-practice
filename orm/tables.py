@@ -146,10 +146,12 @@ class Order(Base, Extension):
                                                           f'тел: {self.courier.phone_number}'}
 
     def __init__(self, client: Union['Client', int] = None, shop: Union['Shop', int] = None,
-                 courier: Union['Courier', int] = None, date: datetime = datetime.now()):
+                 courier: Union['Courier', int] = None, date: datetime = datetime.now(),
+                 status: Union['Status', int] = 1):
         self.set_id_or_link(client, Client)
         self.set_id_or_link(shop, Shop)
         self.set_id_or_link(courier, Courier)
+        self.set_id_or_link(status, Status)
         self.purchase_date = date
 
     def add_product(self, product: Product, quantity=1):
@@ -202,7 +204,7 @@ class ShopDistrict(Base, Extension):
     district_id = sa.Column(sa.Integer, sa.ForeignKey('districts.district_id', ondelete="CASCADE"),
                                         primary_key=True)
 
-    delivery_time = sa.Column(sa.Time, nullable=False)
+    # delivery_time = sa.Column(sa.Time, nullable=False)
 
     # relations
     shop: 'Shop' = \
@@ -216,10 +218,11 @@ class ShopDistrict(Base, Extension):
     district_name: str = \
         association_proxy(target_collection='district', attr='district_name')
 
-    def __init__(self, shop: 'Shop' = None, district: 'District' = None, delivery_time: time = None):
+    def __init__(self, shop: 'Shop' = None, district: 'District' = None):
+                 # delivery_time: time = None):
         self.shop = shop
         self.set_id_or_link(district, District)
-        self.delivery_time = delivery_time
+        # self.delivery_time = delivery_time
 
     def __repr__(self):
         return self._repr(shop_id=self.shop_id,
@@ -253,7 +256,7 @@ class Shop(Base, Extension):
         association_proxy(target_collection='shop_districts', attr='district')
     district_names: list[str] = \
         association_proxy(target_collection='shop_districts', attr='district_name')
-    product_names: list[str] = \
+    products_names: list[str] = \
         association_proxy(target_collection='products', attr='product_name')
 
     def __init__(self, name: str):
@@ -275,7 +278,7 @@ class Shop(Base, Extension):
 
     def add_district(self, district: Union[int, 'District'], delivery_time: time = time(0, 0)):
         self.shop_districts.append(
-            ShopDistrict(shop=self, district=district, delivery_time=delivery_time)
+            ShopDistrict(shop=self, district=district) #delivery_time=delivery_time)
         )
 
     def add_courier(self, courier: 'Courier'):
@@ -286,11 +289,15 @@ class Shop(Base, Extension):
         return [f'{c.first_name} {c.last_name}, {c.phone_number}' for c in self.couriers]
 
     def del_courier(self, courier: 'Courier'):
-        self.products.remove(courier)
+        self.couriers.remove(courier)
+        del courier
 
     def add_product(self, product: 'Product'):
-        self.products.append(product)
-        product.shop = self
+        if product.product_name in self.products_names:
+            self.products[self.products_names.index(product.product_name)].quantity += product.quantity
+        else:
+            self.products.append(product)
+            product.shop = self
 
     def del_product(self, product: Product):
         self.products.remove(product)

@@ -197,6 +197,7 @@ def courier_window(courier: Courier):
     get_order_values = lambda: [[o.order_id, o.client.first_name + ' ' + o.client.last_name,
                              o.client.phone_number, o.client.address, o.status.status_name] for o in courier.orders]
     l_col = sg.Column([
+        [sg.Text('Заказы', font='14'), sg.Stretch()],
         [sg.Table(values=get_order_values(), headings=['ID', 'Клиент', 'Телефон', 'Адрес', 'Статус'],
                   auto_size_columns=False, enable_events=True,
                   col_widths=[3, 15, 8, 20, 8], key='ORDERS_TABLE')]
@@ -212,7 +213,6 @@ def courier_window(courier: Courier):
              sg.Text(f'магазин: "{courier.shop.shop_name}"'), sg.Stretch(),
              sg.Button('Изм. данные', key='CHANGE_DATA')],
             [sg.HorizontalSeparator(pad=(0, 10))],
-            [sg.Text('Заказы', font='14'), sg.Stretch()],
             [l_col, sg.VerticalSeparator(), r_col],
             [sg.HorizontalSeparator()],
             [sg.Exit('Выход', key='EXIT'), sg.Stretch()]
@@ -261,12 +261,17 @@ def courier_window(courier: Courier):
     return reset
 
 
-def order_window(order: Order, client: Client = None, shop: Shop = None, courier: Courier = None, show=False):
+def order_window(order: Order, client: Client = None,
+                 shop: Shop = None, courier: Courier = None,
+                 show=False):
 
     session = object_session(order)
     def get_prod_values():
-        return sorted([[op.product_id, op.product.product_name, op.product.price, op.quantity]
-                       for op in order.products], key=lambda x: x[0])
+        res = []
+        for op in order.products:
+            if op.quantity >= 0:
+                res.append([op.product_id, op.product.product_name, op.product.price, op.quantity])
+        return sorted(res,key=lambda x: x[0])
     l_col = sg.Column([
         [sg.Text('Товары', font='14'), sg.Stretch()],
         [sg.Table(values=get_prod_values(), headings=['ID', 'Название', 'Цена, ₽', 'Кол-во'], auto_size_columns=False,
@@ -297,6 +302,7 @@ def order_window(order: Order, client: Client = None, shop: Shop = None, courier
         couriers_names = shop.get_courier_names()
         check = sg.Combo(couriers_names,
                          default_value=order.courier.get_name_phone() if order.courier else None,
+                         enable_events=True,
                          key='COURIER')
     layout = [
         [sg.Frame(f'Заказ [ {order.order_id} ] от {order.purchase_date.strftime("%d.%m.%y %H:%M")}', [
@@ -314,13 +320,13 @@ def order_window(order: Order, client: Client = None, shop: Shop = None, courier
         ], font='bold')]
     ]
     window = sg.Window(f'Заказ [ {order.order_id} ] от {order.purchase_date.strftime("%d.%m.%y %H:%M")}',
-                       layout, element_justification='c', modal=True)
+                       layout, element_justification='c', finalize=True, modal=True)
 
     def add_product_window(shop: Shop):
-        products = dict(list(zip(shop.product_names, shop.products)))
+        products = dict(list(zip(shop.products_names, shop.products)))
         layout = [
             [sg.Text('Товар'), sg.Combo(values=list(products.keys()), size=(20, 1), enable_events=True, key='PRODUCT'),
-             sg.Text('Кол-во:'), sg.Spin(values=[], initial_value=1, size=(2, 1), key='QUANTITY')],
+             sg.Text('Кол-во:'), sg.Spin(values=[], initial_value=1, size=(3, 1), key='QUANTITY')],
             [sg.Button('Добавить', key='ADD'), sg.Stretch(), sg.Button('Отмена', key='EXIT')],
         ]
         window = sg.Window('Добавление товара', layout,
@@ -337,7 +343,9 @@ def order_window(order: Order, client: Client = None, shop: Shop = None, courier
                 case 'ADD':
                     try:
                         res = products[values['PRODUCT']], int(values['QUANTITY'])
-                        if not res[0]: res = []; raise Exception
+                        if not res[0] or res[1] == 0:
+                            res = []
+                            raise Exception
                     except:
                         print(traceback.format_exc())
                         sg.popup('Неверно введены данные', title='Ошибка!')
@@ -360,6 +368,8 @@ def order_window(order: Order, client: Client = None, shop: Shop = None, courier
                     order.remove_product(product.product)
                 window['PRODUCTS_TABLE'].update(values=get_prod_values())
                 window['PRICE'].update(f'{order.price} ₽')
+            case 'COURIER':
+                window['STATUS'].update(value='Передан в доставку')
             case 'OK':
                 if show:
                     break
@@ -418,6 +428,46 @@ def order_window(order: Order, client: Client = None, shop: Shop = None, courier
 
 
 def shop_window(shop: Shop):
+    def show_couriers_window(shop: Shop):
+        def get_couriers():
+            return sorted([[c.courier_id, c.first_name, c.last_name, c.phone_number, len(c.orders)]
+                           for c in shop.couriers], key=lambda x: x[0])
+        layout = [
+            [sg.Frame(f'Курьеры магазина "{shop.shop_name}"', [
+                [sg.Table(values=get_couriers(), headings=['ID', 'Имя', 'Фамилия','Телефон', 'Заказов'],
+                          auto_size_columns=False,
+                          col_widths=[3, 8, 15, 15, 8], key='COURIERS_TABLE'),
+                 sg.Column([[sg.Button('Удалить', key='DEL')]], element_justification='c')
+                ],
+                [sg.Exit('Выход', key='EXIT'), sg.Stretch()]
+            ], element_justification='c', font='bold')]
+        ]
+        window = sg.Window(f'Курьеры "{shop.shop_name}"', layout, element_justification='c',
+                           modal=True, finalize=True)
+        session = object_session(shop)
+        while True:
+            event, values = window.read(timeout=100)
+            match event:
+                case 'EXIT' | sg.WIN_CLOSED:
+                    session.rollback()
+                    session.commit()
+                    break
+                case 'DEL':
+                    try:
+                        table_values = get_couriers()
+                        id = table_values[values['COURIERS_TABLE'][0]][0]
+                        courier = list(filter(lambda c: c.courier_id == id,
+                                              shop.couriers))[0]
+                        shop.del_courier(courier)
+                        shop = session.merge(shop)
+                        session.commit()
+                    except:
+                        print(traceback.format_exc())
+                        sg.popup('Выберите курьера!', title='Ошибка!')
+                    window['COURIERS_TABLE'].update(values=get_couriers())
+        window.close()
+        del window
+
     def add_or_edit_prod(name='', price='', quantity=''):
         texts = sg.Column([
             [sg.Text('Название')],
@@ -477,20 +527,21 @@ def shop_window(shop: Shop):
     filtered = False
     layout = [
         [sg.Frame(f'Магазин [ ID: {shop.shop_id} ]: "{shop.shop_name}"', [
-            [sg.Button('Районы', key='DISTRICTS'),
+            [sg.Button('Ред. название и районы работы', key='DISTRICTS'),
              sg.Button('Курьеры', key='COURIERS')],
             [sg.HorizontalSeparator(pad=(0, 10))],
             [l_col, sg.VerticalSeparator(), r_col],
             [sg.HorizontalSeparator()],
             [sg.Text('ID клиента'), sg.Input(key='CLIENT_ID', size=(3, 1)), sg.Button('Поиск', key='USER_FILTER')],
             [sg.Text('ID курьера'), sg.Input(key='COURIER_ID', size=(3, 1)), sg.Button('Поиск', key='COURIER_FILTER')],
-            [sg.Button('Сброс (показать все)', key='TABLE_RESET')],
+            [sg.Button('Обновить (показать все)', key='TABLE_RESET')],
             [sg.HorizontalSeparator()],
             [sg.Exit('Выход', key='EXIT'), sg.Stretch()]
         ], element_justification='c', font='bold')]
     ]
     window = sg.Window(f'Магазин "{shop.shop_name}"', layout, element_justification='c', modal=True, finalize=True)
     session = object_session(shop)
+    reset = False
     while True:
         event, values = window.read(timeout=100)
         match event:
@@ -498,13 +549,10 @@ def shop_window(shop: Shop):
                 session.commit()
                 break
             case 'ADD_PRODUCT':
-                if filtered:
-                    sg.popup('Значения будут сброшены', title='Сброс')
-                    filtered=False
                 try:
                     product = add_or_edit_prod()
-                    product = Product(product[0], product[1], product[2], shop)
-                    session.add(product)
+                    shop.add_product(Product(product[0], product[1], product[2]))
+                    shop = session.merge(shop)
                     session.commit()
                 except:
                     print(traceback.format_exc())
@@ -512,9 +560,6 @@ def shop_window(shop: Shop):
                         pass
                 window['PRODUCTS_TABLE'].update(values=get_prod_values())
             case 'DEL_PRODUCT':
-                if filtered:
-                    sg.popup('Значения будут сброшены', title='Сброс')
-                    filtered=False
                 try:
                     table_values = get_prod_values()
                     product = table_values[values['PRODUCTS_TABLE'][0]]
@@ -527,15 +572,11 @@ def shop_window(shop: Shop):
                     sg.popup('Выберите товар!', title='Ошибка!')
                 window['PRODUCTS_TABLE'].update(values=get_prod_values())
             case 'EDIT_PRODUCT':
-                if filtered:
-                    sg.popup('Значения будут сброшены', title='Сброс')
-                    filtered=False
                 try:
                     table_values = get_prod_values()
                     id = table_values[values['PRODUCTS_TABLE'][0]][0]
                     product = table_values[values['PRODUCTS_TABLE'][0]][1:4]
                     product_data = add_or_edit_prod(product[0], product[2], product[1])
-                    print(product_data)
                     product = session.query(Product).filter(Product.product_id == id).one()
                     product.product_name = product_data[0]
                     product.price = product_data[1]
@@ -546,26 +587,44 @@ def shop_window(shop: Shop):
                     sg.popup('Выберите товар!', title='Ошибка!')
                 window['PRODUCTS_TABLE'].update(values=get_prod_values())
             case 'EDIT_ORDER':
-                order_data = get_order_values()[values['ORDERS_TABLE'][0]]
-                order = list(filter(lambda order: order.order_id == order_data[0], shop.orders))[0]
                 try:
+                    order_data = window['ORDERS_TABLE'].get()
+                    order_data = order_data[values['ORDERS_TABLE'][0]]
+                    order = list(filter(lambda order: order.order_id == order_data[0], shop.orders))[0]
                     order_window(order, shop=shop)
-                    window['ORDERS_TABLE'].update(values=get_order_values())
+                    if not filtered:
+                        window['ORDERS_TABLE'].update(values=get_order_values())
+                        window['PRODUCTS_TABLE'].update(values=get_prod_values())
                 except:
                     print(traceback.format_exc())
+                    sg.popup('Выберите заказ!', title='Ошибка!')
             case 'DISTRICTS':
-                pass
+                shop_reg(shop)
+                reset = True
+                break
             case 'COURIERS':
-                pass
+                show_couriers_window(shop)
+                if not filtered:
+                    window['ORDERS_TABLE'].update(values=get_order_values())
             case 'USER_FILTER':
-                pass
+                id = int(values['CLIENT_ID'])
+                order_table = get_order_values()
+                order_table = list(filter(lambda x: x[1] == id, order_table))
+                window['ORDERS_TABLE'].update(values=order_table)
+                filtered = True
             case 'COURIER_FILTER':
-                pass
+                id = int(values['COURIER_ID'])
+                order_table = get_order_values()
+                order_table = list(filter(lambda x: x[3] == id, order_table))
+                window['ORDERS_TABLE'].update(values=order_table)
+                filtered = True
             case 'TABLE_RESET':
                 window['PRODUCTS_TABLE'].update(values=get_prod_values())
                 window['ORDERS_TABLE'].update(values=get_order_values())
 
     window.close()
+    del window
+    return reset
 
 
 def client_reg():
@@ -674,11 +733,11 @@ def courier_reg():
     del window
 
 
-def shop_reg():
+def shop_reg(shop: Shop = None):
     with Session() as session:
         districts = list(zip(*session.query(District.district_name).all()))[0]
     layout = [
-        [sg.Text('Название'), sg.Input(key='NAME', size=(20, 1))],
+        [sg.Text('Название'), sg.Input(key='NAME', default_text=shop.shop_name if shop else '', size=(20, 1))],
         [sg.Text('Выберите районы, в которых вы работаете:')],
         [
             sg.Listbox(districts, size=(20, 20), enable_events=True,
@@ -686,10 +745,17 @@ def shop_reg():
             sg.Button('->', disabled=True),
             sg.Listbox(values=[], size=(20, 10), key='DISTRICTS')
         ],
-        [sg.Button('Зарегистрировать', key='bREG')],
-        [sg.OK('OK'), sg.Stretch()]
+        [sg.Button('Редактировать' if shop else 'Зарегистрировать', key='bREG')],
+        [sg.OK('OK'), sg.Stretch()] if not shop else [],
     ]
-    window = sg.Window('Регистрация магазина', layout, element_justification='c', modal=True)
+    window = sg.Window('Редактирование' if shop else 'Регистрация магазина', layout,
+                       element_justification='c', finalize=True, modal=True)
+    if shop:
+        indexes = []
+        for d in shop.district_names:
+            indexes.append(districts.index(d))
+        window['SELECTED_DISTRICTS'].update(set_to_index=indexes)
+        window['DISTRICTS'].update(window['SELECTED_DISTRICTS'].get())
     while True:
         event, values = window.read(timeout=10)
         match event:
@@ -698,22 +764,33 @@ def shop_reg():
             case 'SELECTED_DISTRICTS':
                 window['DISTRICTS'].update(values['SELECTED_DISTRICTS'])
             case 'bREG':
-                try:
-                    with Session() as session:
-                        shop = Shop(values['NAME'].capitalize())
-                        shop_districts = session.query(District). \
-                            filter(District.district_name.in_(values['SELECTED_DISTRICTS'])).all()
-                        if values['SELECTED_DISTRICTS'] and values['NAME']:
-                            for district in shop_districts:
-                                shop.add_district(district)
-                            session.add(shop)
-                            session.commit()
-                            sg.popup(f'Магазин успешно зарегистрирован!', f'id для входа: {shop.shop_id}',
-                                     title='Успех!')
-                        else:
-                            raise Exception
-                except:
-                    sg.popup('Неверно введены данные', title='Ошибка!')
+                if not shop:
+                    try:
+                        with Session() as session:
+                            shop = Shop(values['NAME'].capitalize())
+                            shop_districts = session.query(District). \
+                                filter(District.district_name.in_(values['SELECTED_DISTRICTS'])).all()
+                            if values['SELECTED_DISTRICTS'] and values['NAME']:
+                                for district in shop_districts:
+                                    shop.add_district(district)
+                                session.add(shop)
+                                session.commit()
+                                sg.popup(f'Магазин успешно зарегистрирован!', f'id для входа: {shop.shop_id}',
+                                         title='Успех!')
+                            else:
+                                raise Exception
+                    except:
+                        sg.popup('Неверно введены данные', title='Ошибка!')
+                else:
+                    session = object_session(shop)
+                    shop.shop_name = values['NAME'].capitalize()
+                    shop_districts = session.query(District). \
+                        filter(District.district_name.in_(values['SELECTED_DISTRICTS'])).all()
+                    shop.districts = []
+                    for district in shop_districts:
+                        shop.add_district(district)
+                    session.commit()
+                    break
     window.close()
     del window
 
@@ -721,20 +798,20 @@ def shop_reg():
 def main():
     layout = [
         [sg.Frame('Покупатель', [
-            [sg.Text('Введите id'), sg.Input(key='CLIENT_ID')],
+            [sg.Text('Введите id'), sg.Input(key='CLIENT_ID', size=(7, 1))],
             [sg.Button('Вход', key='bCLIENT_LOGIN'), sg.Button('Регистрация', key='bCLIENT_REG')]],
                   font='bold', element_justification='center')],
         [sg.Frame('Курьер', [
-            [sg.Text('Введите id'), sg.Input(key='COURIER_ID')],
+            [sg.Text('Введите id'), sg.Input(key='COURIER_ID', size=(7, 1))],
             [sg.Button('Вход', key='bCOURIER_LOGIN'), sg.Button('Регистрация', key='bCOURIER_REG')]],
                   font='bold', element_justification='center')],
         [sg.Frame('Магазин', [
-            [sg.Text('Введите id'), sg.Input(key='SHOP_ID')],
+            [sg.Text('Введите id'), sg.Input(key='SHOP_ID', size=(7, 1))],
             [sg.Button('Вход', key='bSHOP_LOGIN'), sg.Button('Регистрация', key='bSHOP_REG')]],
                   font='bold', element_justification='center')],
         [sg.Exit('Выход', k='EXIT')]
     ]
-    window = sg.Window('Вход', layout, element_justification='c', size=(200, 300), finalize=True)
+    window = sg.Window('Вход', layout, element_justification='c', finalize=True)
     session = Session()
     while True:
         log_err = lambda: sg.popup('Ошибка! Попробуйте зарегистрироваться', title='ОШИБКА!')
@@ -769,8 +846,11 @@ def main():
                     user = session.query(Shop). \
                         filter(Shop.shop_id == int(values['SHOP_ID'])).one()
                     # window.close()
-                    shop_window(user)
+                    res = True
+                    while res:
+                        res = shop_window(user)
                 except:
+                    print(traceback.format_exc())
                     log_err()
             case 'bCLIENT_REG':
                 client_reg()

@@ -138,14 +138,14 @@ def insert():
         session.add_all(shops)
         session.add_all(couriers)
 
-        for d, t in zip(districts[1:10], [time(1, 15), time(2, 25), time(3, 0),time(1, 15), time(2, 25), time(3, 0),time(1, 15), time(2, 25), time(3, 0)]):
-            shops[0].add_district(d, t)
+        for d in districts[1:10]:
+            shops[0].add_district(d)
 
-        for d, t in zip(districts[:10:2], [time(2, 15), time(5, 30), time(2, 0),time(2, 15), time(5, 30), time(2, 0),time(2, 15), time(5, 30), time(2, 0)]):
-            shops[1].add_district(d, t)
+        for d in districts[:10:2]:
+            shops[1].add_district(d)
 
-        for d, t in zip(districts[1:10:2], [time(4, 15), time(2, 30), time(1, 15),time(4, 15), time(2, 30), time(1, 15),time(4, 15), time(2, 30), time(1, 15)]):
-            shops[2].add_district(d, t)
+        for d in districts[1:10:2]:
+            shops[2].add_district(d)
 
         for courier in couriers[:3]:
             shops[0].add_courier(courier)
@@ -165,11 +165,11 @@ def insert():
         for client in clients:
             shop = shops[randint(0, 2)]
             orders.append(
-                Order(client, shop, shop.couriers[randint(0, len(shop.couriers) - 1)]))
+                Order(client, shop, shop.couriers[randint(0, len(shop.couriers) - 1)], status=4))
 
         for order in orders:
-            for i in range(randint(0, 5)):
-                order.add_product(order.shop.products[randint(0, len(order.shop.products) - 1)], randint(0, 5))
+            for i in range(randint(1, 5)):
+                order.add_product(order.shop.products[randint(0, len(order.shop.products) - 1)], randint(1, 5))
 
         session.commit()
 
